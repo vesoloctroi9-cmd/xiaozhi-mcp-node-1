@@ -22,7 +22,7 @@ env:
   ATLAS_RESEARCH_FETCH_TOP: "1"
   ATLAS_RESEARCH_MAX_ITEMS: "100"
 
-  ATLAS_RESEARCH_OUTPUT: "site/atlas_research.json"
+  ATLAS_RESEARCH_OUTPUT: "site/atlas_research_node1.json"
   ATLAS_MCP_CONFIG: "mcp_research_config.json"
 
   ATLAS_TOOL_TIMEOUT_SECONDS: "45"
