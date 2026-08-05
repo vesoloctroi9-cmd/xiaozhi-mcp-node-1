@@ -6,7 +6,7 @@ One-shot GitHub Actions worker that:
 - Searches/fetches public web content.
 - Merges the previous public GitHub Pages cache.
 - Deduplicates repeated URLs.
-- Writes the NODE-1 research cache file for GitHub Pages.
+- Writes site/atlas_research.json for GitHub Pages.
 - Does NOT depend on Render, PC, or USB.
 """
 
@@ -35,7 +35,7 @@ LOGGER = logging.getLogger("ATLAS_RESEARCH")
 DEFAULT_CONFIG = "mcp-calculator-main/mcp_config.json"
 DEFAULT_SERVER = "duckduckgo-web-search"
 DEFAULT_TOPICS = "trí tuệ nhân tạo mới nhất,công nghệ mới nhất,tin Việt Nam mới nhất"
-DEFAULT_OUTPUT = "site/atlas_research_node1.json"
+DEFAULT_OUTPUT = "site/atlas_research.json"
 URL_RE = re.compile(r"https?://[^\s<>\]\[()\"']+", re.IGNORECASE)
 
 
@@ -83,7 +83,7 @@ def extract_urls(text: str) -> List[str]:
     return urls
 
 
-def derive_pages_cache_url(output_path: Path) -> str:
+def derive_pages_cache_url() -> str:
     explicit = os.environ.get("ATLAS_EXISTING_CACHE_URL", "").strip()
     if explicit:
         return explicit
@@ -93,7 +93,7 @@ def derive_pages_cache_url(output_path: Path) -> str:
         return ""
 
     owner, repo = repository.split("/", 1)
-    return f"https://{owner}.github.io/{repo}/{output_path.name}"
+    return f"https://{owner}.github.io/{repo}/atlas_research.json"
 
 
 def load_json_file(path: Path) -> Optional[Dict[str, Any]]:
@@ -383,7 +383,7 @@ code{{background:#f2f2f2;padding:2px 6px;border-radius:4px}}
 <p>Trạng thái: <strong>{html.escape(str(payload.get("status", "unknown")))}</strong></p>
 <p>Cập nhật UTC: <code>{html.escape(str(payload.get("generated_at", "")))}</code></p>
 <p>Số mục đang lưu: <strong>{html.escape(str(payload.get("item_count", 0)))}</strong></p>
-<p><a href="{html.escape(output_path.name)}">Mở {html.escape(output_path.name)}</a></p>
+<p><a href="{html.escape(output_path.name)}">Mở atlas_research.json</a></p>
 </body>
 </html>
 """
@@ -406,7 +406,7 @@ async def async_main() -> int:
     remote_timeout = env_int("ATLAS_REMOTE_CACHE_TIMEOUT_SECONDS", 12, 3, 30)
     fetch_max_length = env_int("ATLAS_FETCH_MAX_LENGTH", 8000, 1000, 20000)
 
-    cache_url = derive_pages_cache_url(output_path)
+    cache_url = derive_pages_cache_url()
     local_cache = load_json_file(output_path)
     remote_cache = load_json_url(cache_url, remote_timeout)
     old_items = merge_existing_items([local_cache, remote_cache], max_items)
