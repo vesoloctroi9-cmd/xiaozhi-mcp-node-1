@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ATLAS MULTI-SOURCE MCP PROXY
-Version: 2.0.1-node1
+Version: 2.0.2-node1
 
 Route order for search:
   1) Fresh GitHub Pages research cache
@@ -35,7 +35,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from aiohttp import ClientSession, ClientTimeout
 
-VERSION = "2.0.1-node1"
+VERSION = "2.0.2-node1"
 LOGGER = logging.getLogger("ATLAS_MULTI_PROXY")
 logging.basicConfig(
     level=os.environ.get("MCP_LOG_LEVEL", "INFO").upper(),
@@ -273,10 +273,8 @@ class ResearchCache:
                     async with session.get(
                         request_url,
                         headers={
-                            "User-Agent": f"ATLAS-Multi-Proxy/{VERSION}",
-                            "Accept": "application/json",
-                            "Cache-Control": "no-cache, no-store, max-age=0",
-                            "Pragma": "no-cache",
+                            "User-Agent": "Mozilla/5.0",
+                            "Accept": "*/*",
                         },
                         allow_redirects=True,
                     ) as response:
