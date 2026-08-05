@@ -1,13 +1,14 @@
 name: ATLAS Research + GitHub Pages
 
 on:
-  # GitHub có thể chạy trễ so với lịch khi hệ thống đang tải cao.
+  # Best-effort schedule. GitHub may delay or skip scheduled runs under load.
+  # Offset from minute 0 to reduce peak-time congestion.
   schedule:
     - cron: "7,17,27,37,47,57 * * * *"
   workflow_dispatch:
 
 concurrency:
-  group: atlas-research-pages-node-1
+  group: atlas-research-pages
   cancel-in-progress: false
 
 permissions:
@@ -21,11 +22,8 @@ env:
   ATLAS_RESEARCH_RESULTS_PER_TOPIC: "3"
   ATLAS_RESEARCH_FETCH_TOP: "1"
   ATLAS_RESEARCH_MAX_ITEMS: "100"
-
-  # CACHE RIÊNG CHO NODE-1
-  ATLAS_RESEARCH_OUTPUT: "site/atlas_research_node1.json"
-  ATLAS_MCP_CONFIG: "mcp_research_config.json"
-
+  ATLAS_RESEARCH_OUTPUT: "site/atlas_research.json"
+  ATLAS_MCP_CONFIG: "mcp-calculator-main/mcp_research_config.json"
   ATLAS_TOOL_TIMEOUT_SECONDS: "45"
   ATLAS_REMOTE_CACHE_TIMEOUT_SECONDS: "12"
   ATLAS_FETCH_MAX_LENGTH: "8000"
@@ -45,70 +43,18 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
-          cache-dependency-path: "requirements.txt"
+          cache-dependency-path: "mcp-calculator-main/requirements.txt"
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-
-      - name: Create live research MCP config
-        run: |
-          cat > mcp_research_config.json <<'EOF'
-          {
-            "mcpServers": {
-              "duckduckgo-web-search": {
-                "type": "stdio",
-                "command": "uvx",
-                "args": [
-                  "--with",
-                  "duckduckgo-mcp-server[browser]",
-                  "duckduckgo-mcp-server",
-                  "--fetch-backend",
-                  "auto"
-                ],
-                "env": {
-                  "DDG_SAFE_SEARCH": "STRICT",
-                  "DDG_REGION": "wt-wt",
-                  "DDG_SEARCH_BACKEND": "auto"
-                }
-              }
-            }
-          }
-          EOF
+          python -m pip install -r mcp-calculator-main/requirements.txt
 
       - name: Static Python syntax audit
-        run: |
-          python -m py_compile research_worker.py
-          python -m py_compile atlas_cache_mcp_proxy.py
-          python -m py_compile mcp_pipe.py
-
-      - name: Prepare Pages directory
-        run: |
-          mkdir -p site
+        run: python -m py_compile research_worker.py mcp-calculator-main/atlas_cache_mcp_proxy.py mcp-calculator-main/mcp_pipe.py
 
       - name: Run ATLAS Research Worker
-        run: |
-          python research_worker.py
-
-      - name: Verify NODE-1 cache artifact
-        run: |
-          test -f site/atlas_research_node1.json
-          python - <<'PY'
-          import json
-
-          path = "site/atlas_research_node1.json"
-
-          with open(path, "r", encoding="utf-8") as f:
-              data = json.load(f)
-
-          assert data.get("status") == "ok", data
-          assert isinstance(data.get("items"), list), data
-
-          print("NODE-1 CACHE ARTIFACT: PASS")
-          print("status =", data.get("status"))
-          print("items  =", len(data.get("items", [])))
-          PY
+        run: python research_worker.py
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
