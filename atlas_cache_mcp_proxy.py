@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ATLAS MULTI-SOURCE MCP PROXY
-Version: 2.0.2-node1
+Version: 2.0.3-node1-diagnostic
 
 Route order for search:
   1) Fresh GitHub Pages research cache
@@ -35,7 +35,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from aiohttp import ClientSession, ClientTimeout
 
-VERSION = "2.0.2-node1"
+VERSION = "2.0.3-node1-diagnostic"
 LOGGER = logging.getLogger("ATLAS_MULTI_PROXY")
 logging.basicConfig(
     level=os.environ.get("MCP_LOG_LEVEL", "INFO").upper(),
@@ -279,6 +279,26 @@ class ResearchCache:
                         allow_redirects=True,
                     ) as response:
                         if response.status != 200:
+                            body_preview = (
+                                await response.text(errors="replace")
+                            )[:500].replace("\n", " ").replace("\r", " ")
+                            safe_headers = {
+                                "server": response.headers.get("Server", ""),
+                                "content-type": response.headers.get("Content-Type", ""),
+                                "location": response.headers.get("Location", ""),
+                                "via": response.headers.get("Via", ""),
+                                "x-cache": response.headers.get("X-Cache", ""),
+                                "x-served-by": response.headers.get("X-Served-By", ""),
+                            }
+                            LOGGER.warning(
+                                "[CACHE_DIAG] HTTP_NON_200 | status=%s | request_url=%s | "
+                                "final_url=%s | headers=%s | body_preview=%r",
+                                response.status,
+                                request_url,
+                                str(response.url),
+                                safe_headers,
+                                body_preview,
+                            )
                             raise RuntimeError(
                                 f"HTTP {response.status} | url={response.url}"
                             )
