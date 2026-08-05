@@ -22,6 +22,7 @@ env:
   ATLAS_RESEARCH_FETCH_TOP: "1"
   ATLAS_RESEARCH_MAX_ITEMS: "100"
 
+  # CACHE RIÊNG CHO NODE-1
   ATLAS_RESEARCH_OUTPUT: "site/atlas_research_node1.json"
   ATLAS_MCP_CONFIG: "mcp_research_config.json"
 
@@ -83,10 +84,31 @@ jobs:
           python -m py_compile mcp_pipe.py
 
       - name: Prepare Pages directory
-        run: mkdir -p site
+        run: |
+          mkdir -p site
 
       - name: Run ATLAS Research Worker
-        run: python research_worker.py
+        run: |
+          python research_worker.py
+
+      - name: Verify NODE-1 cache artifact
+        run: |
+          test -f site/atlas_research_node1.json
+          python - <<'PY'
+          import json
+
+          path = "site/atlas_research_node1.json"
+
+          with open(path, "r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          assert data.get("status") == "ok", data
+          assert isinstance(data.get("items"), list), data
+
+          print("NODE-1 CACHE ARTIFACT: PASS")
+          print("status =", data.get("status"))
+          print("items  =", len(data.get("items", [])))
+          PY
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
