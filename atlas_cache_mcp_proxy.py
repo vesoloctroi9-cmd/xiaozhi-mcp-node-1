@@ -268,17 +268,26 @@ class ResearchCache:
             timeout = ClientTimeout(total=CACHE_TIMEOUT_SECONDS)
             try:
                 async with ClientSession(timeout=timeout) as session:
+                    separator = "&" if "?" in self.state.source_url else "?"
+                    request_url = (
+                        f"{self.state.source_url}"
+                        f"{separator}_atlas_refresh={int(utc_now().timestamp())}"
+                    )
+
                     async with session.get(
-                        self.state.source_url,
+                        request_url,
                         headers={
                             "User-Agent": f"ATLAS-Multi-Proxy/{VERSION}",
                             "Accept": "application/json",
-                            "Cache-Control": "no-cache",
+                            "Cache-Control": "no-cache, no-store, max-age=0",
+                            "Pragma": "no-cache",
                         },
                         allow_redirects=True,
                     ) as response:
                         if response.status != 200:
-                            raise RuntimeError(f"HTTP {response.status}")
+                            raise RuntimeError(
+                                f"HTTP {response.status} | url={response.url}"
+                            )
                         payload = await response.json(content_type=None)
                 if not isinstance(payload, dict):
                     raise RuntimeError("cache root is not a JSON object")
