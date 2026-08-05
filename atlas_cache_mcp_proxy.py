@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ATLAS MULTI-SOURCE MCP PROXY
-Version: 2.0.0
+Version: 2.0.1-node1
 
 Route order for search:
   1) Fresh GitHub Pages research cache
@@ -35,7 +35,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from aiohttp import ClientSession, ClientTimeout
 
-VERSION = "2.0.0"
+VERSION = "2.0.1-node1"
 LOGGER = logging.getLogger("ATLAS_MULTI_PROXY")
 logging.basicConfig(
     level=os.environ.get("MCP_LOG_LEVEL", "INFO").upper(),
@@ -162,7 +162,7 @@ def derive_cache_url() -> str:
     if "/" not in repo:
         return ""
     owner, name = repo.split("/", 1)
-    return f"https://{owner}.github.io/{name}/atlas_research.json"
+    return f"https://{owner}.github.io/{name}/atlas_research_node1.json"
 
 
 def canonical_url_for_cache(value: str) -> str:
@@ -268,11 +268,7 @@ class ResearchCache:
             timeout = ClientTimeout(total=CACHE_TIMEOUT_SECONDS)
             try:
                 async with ClientSession(timeout=timeout) as session:
-                    separator = "&" if "?" in self.state.source_url else "?"
-                    request_url = (
-                        f"{self.state.source_url}"
-                        f"{separator}_atlas_refresh={int(utc_now().timestamp())}"
-                    )
+                    request_url = self.state.source_url
 
                     async with session.get(
                         request_url,
