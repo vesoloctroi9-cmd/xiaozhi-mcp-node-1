@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-ATLAS CACHE-FIRST MCP PROXY
-Version: 1.1.0
+ATLAS SHARED MULTI-SOURCE MCP PROXY
+Version: 3.0.0
 
 Purpose
 -------
@@ -51,9 +51,11 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from aiohttp import ClientSession, ClientTimeout
 
+from atlas_search_router import AtlasSearchRouter, Intent
 
-VERSION = "1.1.0"
-LOGGER = logging.getLogger("ATLAS_CACHE_PROXY")
+
+VERSION = "3.0.0"
+LOGGER = logging.getLogger("ATLAS_MULTI_PROXY")
 logging.basicConfig(
     level=os.environ.get("MCP_LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -71,6 +73,14 @@ def env_int(name: str, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, value))
 
 
+def env_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on"}
+
+
+CACHE_ENABLED = env_bool("ATLAS_CACHE_ENABLED", False)
 CACHE_REFRESH_SECONDS = env_int("ATLAS_CACHE_REFRESH_SECONDS", 60, 15, 600)
 CACHE_MAX_AGE_SECONDS = env_int("ATLAS_CACHE_MAX_AGE_SECONDS", 3600, 60, 86400)
 CACHE_TIMEOUT_SECONDS = env_int("ATLAS_CACHE_TIMEOUT_SECONDS", 3, 1, 15)
@@ -161,9 +171,10 @@ def derive_cache_url() -> str:
     # Backward-compatible alias: the current Render environment used this key.
     legacy = os.environ.get("RESEARCH_CACHE_URL", "").strip()
     if legacy:
-        LOGGER.warning(
-            "RESEARCH_CACHE_URL is deprecated; prefer ATLAS_RESEARCH_CACHE_URL"
-        )
+        if CACHE_ENABLED:
+            LOGGER.warning(
+                "RESEARCH_CACHE_URL is deprecated; prefer ATLAS_RESEARCH_CACHE_URL"
+            )
         return legacy
 
     repo = (
@@ -240,7 +251,9 @@ class ResearchCache:
         self._lock = asyncio.Lock()
 
     def configured(self) -> bool:
-        return bool(self.state.source_url) and not cache_bypass_enabled()
+        # Cache is optional and OFF by default. A stale/broken Pages URL must never
+        # block or delay live search. Enable only with ATLAS_CACHE_ENABLED=true.
+        return CACHE_ENABLED and bool(self.state.source_url) and not cache_bypass_enabled()
 
     async def refresh(self, *, force: bool = False) -> Optional[Dict[str, Any]]:
         if not self.configured():
@@ -477,6 +490,7 @@ class ResearchCache:
 
 
 CACHE = ResearchCache()
+SEARCH_ROUTER = AtlasSearchRouter()
 STDOUT_LOCK: Optional[asyncio.Lock] = None
 
 
@@ -507,9 +521,6 @@ async def write_stdout(line: str) -> None:
 
 
 async def maybe_intercept_tool_call(message: str) -> Optional[str]:
-    if not CACHE.configured():
-        return None
-
     try:
         payload = json.loads(message)
     except Exception:
@@ -520,7 +531,6 @@ async def maybe_intercept_tool_call(message: str) -> Optional[str]:
     request_id = payload.get("id")
     if request_id is None:
         return None
-
     params = payload.get("params")
     if not isinstance(params, dict):
         return None
@@ -537,11 +547,31 @@ async def maybe_intercept_tool_call(message: str) -> Optional[str]:
             max_results = int(arguments.get("max_results", 10))
         except (TypeError, ValueError):
             max_results = 10
-        hit = await CACHE.search_hit(query, max_results)
-        if hit:
-            LOGGER.info("[CACHE] ROUTE | tool=search | source=CACHE")
-            return mcp_text_response(request_id, hit)
-        LOGGER.info("[CACHE] ROUTE | tool=search | source=LIVE")
+
+        plan = SEARCH_ROUTER.plan(query)
+
+        # Stable general queries may use cache first, but only when cache was
+        # explicitly enabled. Fresh/social/viral queries are LIVE-first.
+        if plan.cache_first and CACHE.configured():
+            hit = await CACHE.search_hit(query, max_results)
+            if hit:
+                LOGGER.info("[WEB ROUTE] search | source=CACHE | intent=%s", plan.intent.value)
+                return mcp_text_response(request_id, hit)
+
+        live = await SEARCH_ROUTER.search_text(query, max_results)
+        if live:
+            LOGGER.info("[WEB ROUTE] search | source=MULTI_LIVE | intent=%s", plan.intent.value)
+            return mcp_text_response(request_id, live)
+
+        # If live paid sources were unavailable, a configured cache may still
+        # provide a useful fallback before the existing DDG child.
+        if (not plan.cache_first) and CACHE.configured():
+            hit = await CACHE.search_hit(query, max_results)
+            if hit:
+                LOGGER.info("[WEB ROUTE] search | source=CACHE_FALLBACK | intent=%s", plan.intent.value)
+                return mcp_text_response(request_id, hit)
+
+        LOGGER.info("[WEB ROUTE] search | source=DUCKDUCKGO | intent=%s", plan.intent.value)
         return None
 
     if name == "fetch_content":
@@ -556,11 +586,19 @@ async def maybe_intercept_tool_call(message: str) -> Optional[str]:
             max_length = int(arguments.get("max_length", 8000))
         except (TypeError, ValueError):
             max_length = 8000
-        hit = await CACHE.fetch_hit(url, start_index, max_length)
-        if hit:
-            LOGGER.info("[CACHE] ROUTE | tool=fetch_content | source=CACHE")
-            return mcp_text_response(request_id, hit)
-        LOGGER.info("[CACHE] ROUTE | tool=fetch_content | source=LIVE")
+
+        if CACHE.configured():
+            hit = await CACHE.fetch_hit(url, start_index, max_length)
+            if hit:
+                LOGGER.info("[WEB ROUTE] fetch_content | source=CACHE")
+                return mcp_text_response(request_id, hit)
+
+        live = await SEARCH_ROUTER.fetch_text(url, start_index, max_length)
+        if live:
+            LOGGER.info("[WEB ROUTE] fetch_content | source=TAVILY")
+            return mcp_text_response(request_id, live)
+
+        LOGGER.info("[WEB ROUTE] fetch_content | source=DUCKDUCKGO")
         return None
 
     return None
@@ -639,7 +677,7 @@ async def child_stderr(process: asyncio.subprocess.Process) -> None:
 
 async def main() -> int:
     command = upstream_command()
-    LOGGER.info("ATLAS Cache Proxy v%s starting", VERSION)
+    LOGGER.info("ATLAS Shared Multi-Source Proxy v%s starting", VERSION)
     LOGGER.info("Upstream MCP: %s", " ".join(command))
 
     child_env = os.environ.copy()
@@ -693,5 +731,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         raise SystemExit(130)
     except Exception as exc:
-        LOGGER.exception("ATLAS Cache Proxy FAIL: %s", exc)
+        LOGGER.exception("ATLAS Shared Multi-Source Proxy FAIL: %s", exc)
         raise SystemExit(1)
