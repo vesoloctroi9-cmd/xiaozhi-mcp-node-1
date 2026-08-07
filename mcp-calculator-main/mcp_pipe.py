@@ -1,5 +1,5 @@
 """
-ATLAS NODE-2 MCP BRIDGE
+ATLAS SHARED MCP BRIDGE
 Version: 2.3.0 DIAGNOSTICS
 
 Mục tiêu
@@ -15,7 +15,7 @@ Mục tiêu
 6) Theo dõi stderr của MCP để thấy request HTTP ra Internet nếu MCP server có log.
 7) KHÔNG chạy Research Scanner trên Render.
 8) Có TEST MODE hữu hạn để kiểm tra cơ chế idle/sleep của Render:
-   - ping public URL của chính NODE-2 mỗi 5 phút;
+   - ping public URL của chính service mỗi 5 phút;
    - tối đa 60 phút;
    - tự dừng và ghi log PASS/STOP;
    - mặc định TẮT;
@@ -63,7 +63,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 VERSION = "2.3.0"
-SERVICE_NAME = "ATLAS NODE-2 MCP"
+SERVICE_NAME = "ATLAS MCP"
 LOG_LEVEL = os.environ.get("MCP_LOG_LEVEL", "INFO").upper()
 
 logging.basicConfig(
@@ -547,7 +547,7 @@ async def handle_sleep_test_probe(request: web.Request) -> web.Response:
 
 async def bounded_render_sleep_test() -> None:
     """
-    Run a finite self-probe test through NODE-2's public Render URL.
+    Run a finite self-probe test through this service's public Render URL.
 
     Safety/operational guarantees:
     - disabled by default;
